@@ -61,6 +61,12 @@ class DashboardTab(Widget):
                     yield Button("Delete", variant="error", classes="danger", id="btn-delete")
 
             yield DataTable(id="profiles-table", cursor_type="row")
+            yield Static(
+                "✨ [bold #38bdf8]Welcome to Rclone AutoSync![/] No sync profiles configured yet.\n"
+                "Click [bold #0284c7][+ New Profile][/] (or press [bold #f8fafc][N][/]) to configure your first folder, "
+                "or switch to the [bold #38bdf8]📁 Drive Explorer[/] tab to browse your Google Drive.",
+                id="empty-profiles-notice",
+            )
             yield TransferCard()
 
     async def on_mount(self) -> None:
@@ -119,12 +125,15 @@ class DashboardTab(Widget):
                 key=p.id,
             )
 
+        empty_notice = self.query_one("#empty-profiles-notice", Static)
         if self.profiles:
+            empty_notice.display = False
             # Restore selection or select first
             row_idx = min(prev_cursor_row, len(self.profiles) - 1) if prev_cursor_row >= 0 else 0
             table.move_cursor(row=row_idx)
             self.selected_profile_id = self.profiles[row_idx].id
         else:
+            empty_notice.display = True
             self.selected_profile_id = None
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
