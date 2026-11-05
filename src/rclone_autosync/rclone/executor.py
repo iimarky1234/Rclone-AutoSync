@@ -69,9 +69,11 @@ def build_rclone_cmd(
     cmd.extend([
         "--use-json-log",
         "--stats", "1s",
+        "--stats-log-level", "NOTICE",
         "--stats-one-line=false",
         "--transfers", str(config.transfers),
         "--checkers", str(config.checkers),
+        "-v",
     ])
 
     # Bandwidth limit: Profile takes precedence over global default
@@ -230,6 +232,13 @@ class RcloneExecutor:
                                 action_log.append(formatted)
                                 if on_log:
                                     on_log(level, formatted)
+
+                                # Update live status message for UI progress card
+                                clean_msg = clean_ansi(msg).strip()
+                                if clean_msg and on_progress:
+                                    obj_str = f" ({data['object']})" if "object" in data else ""
+                                    last_progress.current_message = f"{clean_msg}{obj_str}"
+                                    on_progress(last_progress)
 
                         except json.JSONDecodeError:
                             action_log.append(line)

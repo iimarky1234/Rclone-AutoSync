@@ -280,6 +280,15 @@ class DashboardTab(Widget):
         resync: bool = False,
     ) -> None:
         card = self.query_one(TransferCard)
+        card.update_progress(
+            TransferProgress(
+                profile_id=profile.id,
+                profile_name=profile.name,
+                status="syncing",
+                dry_run=dry_run,
+                current_message="Initializing sync engine...",
+            )
+        )
         executor = RcloneExecutor(profile=profile)
 
         def on_prog(prog: TransferProgress) -> None:

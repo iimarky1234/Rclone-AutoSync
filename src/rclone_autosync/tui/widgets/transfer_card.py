@@ -73,13 +73,27 @@ class TransferCard(Widget):
         done_b = progress.bytes_transferred
         pct = progress.percentage
 
-        bar.update(total=100, progress=min(100.0, pct))
+        if total_b > 0:
+            bar.update(total=100, progress=min(100.0, pct))
+            bytes_text = f"{format_bytes(done_b)} / {format_bytes(total_b)} ({pct:.1f}%)"
+        elif done_b > 0:
+            bar.update(total=None)
+            bytes_text = f"{format_bytes(done_b)} transferred"
+        else:
+            # Indeterminate pulse while listing, diffing, and checking
+            bar.update(total=None)
+            bytes_text = "Scanning & Checking..."
 
-        bytes_text = f"{format_bytes(done_b)} / {format_bytes(total_b)} ({pct:.1f}%)"
         bytes_label.update(bytes_text)
         speed_label.update(format_speed(progress.speed))
         eta_label.update(format_duration(progress.eta_seconds))
-        files_label.update(f"{progress.transfers} / {progress.total_transfers}")
+
+        if progress.total_transfers > 0:
+            files_label.update(f"{progress.transfers} / {progress.total_transfers}")
+        elif progress.checks > 0:
+            files_label.update(f"{progress.checks} checked")
+        else:
+            files_label.update("Listing...")
 
         if progress.active_files:
             file_lines = []
@@ -88,5 +102,7 @@ class TransferCard(Widget):
                 speed_str = format_speed(f.speed) if f.speed else ""
                 file_lines.append(f"  • {f.name}  [{file_pct} {speed_str}]")
             active_files_static.update("\n".join(file_lines))
+        elif progress.current_message:
+            active_files_static.update(f"  • {progress.current_message[:95]}")
         else:
-            active_files_static.update(progress.current_message or "")
+            active_files_static.update("  • Initializing...")

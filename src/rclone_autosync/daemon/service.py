@@ -162,10 +162,23 @@ class DaemonService:
                 self._current_profile_id = profile_id
                 self.profile_statuses[profile_id] = ProfileStatus.SYNCING
 
+                init_prog = TransferProgress(
+                    profile_id=profile.id,
+                    profile_name=profile.name,
+                    status="syncing",
+                    dry_run=dry_run,
+                    current_message="Initializing sync engine...",
+                )
+                self._current_progress = init_prog
+
                 if self.ipc_server:
                     await self.ipc_server.broadcast_event(
                         "status_change",
                         {"profile_id": profile_id, "status": ProfileStatus.SYNCING.value},
+                    )
+                    await self.ipc_server.broadcast_event(
+                        "progress",
+                        init_prog.model_dump(),
                     )
 
                 logger.info(
