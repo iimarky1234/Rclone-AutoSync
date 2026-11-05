@@ -17,7 +17,7 @@ from ...config import (
 )
 from ...daemon.ipc import DaemonClient
 from ...models import ProfileStatus, SyncMode, SyncProfile, TransferProgress
-from ...rclone.executor import RcloneExecutor
+from ...rclone.executor import RcloneExecutor, has_bisync_listings
 from ..formatters import format_iso_timestamp
 from ..widgets.status_pill import StatusPill
 from ..widgets.transfer_card import TransferCard
@@ -30,6 +30,7 @@ class DashboardTab(Widget):
 
     BINDINGS = [
         Binding("space", "sync_selected", "Sync Now", priority=True),
+        Binding("b", "resync_selected", "Resync (Init)", priority=True),
         Binding("d", "dry_run_selected", "Dry Run", priority=True),
         Binding("w", "toggle_watch_selected", "Toggle Watch", priority=True),
         Binding("n", "new_profile", "New Profile", priority=True),
@@ -55,6 +56,7 @@ class DashboardTab(Widget):
                 with Horizontal():
                     yield Button("+ New Profile", variant="primary", classes="primary", id="btn-new-profile")
                     yield Button("Sync Now", variant="success", classes="success", id="btn-sync-now")
+                    yield Button("Resync", variant="warning", classes="warning", id="btn-resync")
                     yield Button("Dry Run", variant="default", id="btn-dry-run")
                     yield Button("Toggle Watch", variant="default", id="btn-toggle-watch")
                     yield Button("Edit", variant="default", id="btn-edit")
@@ -154,6 +156,8 @@ class DashboardTab(Widget):
             await self.action_new_profile()
         elif event.button.id == "btn-sync-now":
             await self.action_sync_selected()
+        elif event.button.id == "btn-resync":
+            await self.action_resync_selected()
         elif event.button.id == "btn-dry-run":
             await self.action_dry_run_selected()
         elif event.button.id == "btn-toggle-watch":
@@ -214,16 +218,41 @@ class DashboardTab(Widget):
             self.app.notify("Select a profile to sync", severity="warning")
             return
 
+        need_resync = False
+        if p.mode == SyncMode.BISYNC and not has_bisync_listings(p):
+            need_resync = True
+            self.app.notify("First-time bisync: Initializing baseline with --resync...", severity="warning")
+
         if await self.client.is_running():
             try:
-                resp = await self.client.send_command("sync_now", profile_id=p.id)
+                resp = await self.client.send_command("sync_now", profile_id=p.id, resync=need_resync)
                 self.app.notify(f"Queued sync for '{p.name}'", severity="information")
             except Exception as e:
                 self.app.notify(f"Failed to queue sync: {e}", severity="error")
         else:
             # Standalone execution if daemon not running
             self.app.notify(f"Running sync directly for '{p.name}'...", severity="information")
-            self.run_worker(self._run_direct_sync(p, dry_run=False))
+            self.run_worker(self._run_direct_sync(p, dry_run=False, resync=need_resync))
+
+    async def action_resync_selected(self) -> None:
+        p = self.get_selected_profile()
+        if not p:
+            self.app.notify("Select a profile to resync", severity="warning")
+            return
+
+        if p.mode != SyncMode.BISYNC:
+            self.app.notify("Resync is only applicable to Bidirectional (bisync) profiles", severity="information")
+            return
+
+        self.app.notify(f"Running baseline Resync (--resync) for '{p.name}'...", severity="warning")
+        if await self.client.is_running():
+            try:
+                await self.client.send_command("sync_now", profile_id=p.id, resync=True)
+                self.app.notify(f"Queued resync for '{p.name}'", severity="information")
+            except Exception as e:
+                self.app.notify(f"Failed to queue resync: {e}", severity="error")
+        else:
+            self.run_worker(self._run_direct_sync(p, dry_run=False, resync=True))
 
     async def action_dry_run_selected(self) -> None:
         p = self.get_selected_profile()
@@ -244,14 +273,19 @@ class DashboardTab(Widget):
 
         self.app.push_screen(DryRunModal(profile=profile, result=result), modal_callback)
 
-    async def _run_direct_sync(self, profile: SyncProfile, dry_run: bool = False) -> None:
+    async def _run_direct_sync(
+        self,
+        profile: SyncProfile,
+        dry_run: bool = False,
+        resync: bool = False,
+    ) -> None:
         card = self.query_one(TransferCard)
         executor = RcloneExecutor(profile=profile)
 
         def on_prog(prog: TransferProgress) -> None:
             card.update_progress(prog)
 
-        result = await executor.run(dry_run=dry_run, on_progress=on_prog)
+        result = await executor.run(dry_run=dry_run, resync=resync, on_progress=on_prog)
         card.update_progress(None)
 
         if result.success:

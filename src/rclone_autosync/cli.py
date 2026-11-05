@@ -37,7 +37,7 @@ def run_tui() -> None:
     app.run()
 
 
-async def cmd_sync(profile_query: str, dry_run: bool = False) -> int:
+async def cmd_sync(profile_query: str, dry_run: bool = False, resync: bool = False) -> int:
     """Trigger sync for a profile by name or ID."""
     profile = get_profile_by_id(profile_query) or get_profile_by_name(profile_query)
     if not profile:
@@ -48,15 +48,20 @@ async def cmd_sync(profile_query: str, dry_run: bool = False) -> int:
     if await client.is_running():
         console.print(f"[cyan]Daemon is running.[/cyan] Queuing sync for [bold]{profile.name}[/bold]...")
         try:
-            resp = await client.send_command("sync_now", profile_id=profile.id, dry_run=dry_run)
+            resp = await client.send_command(
+                "sync_now",
+                profile_id=profile.id,
+                dry_run=dry_run,
+                resync=resync,
+            )
             console.print(f"[green]Successfully queued:[/green] {resp}")
             return 0
         except Exception as e:
             console.print(f"[yellow]Daemon IPC error: {e}. Falling back to direct run.[/yellow]")
 
-    console.print(f"Running sync directly for [bold]{profile.name}[/bold] (dry_run={dry_run})...")
+    console.print(f"Running sync directly for [bold]{profile.name}[/bold] (dry_run={dry_run}, resync={resync})...")
     executor = RcloneExecutor(profile=profile)
-    result = await executor.run(dry_run=dry_run)
+    result = await executor.run(dry_run=dry_run, resync=resync)
 
     if result.success:
         console.print(
@@ -159,6 +164,7 @@ def main() -> None:
     sync_parser = subparsers.add_parser("sync", help="Trigger sync for a profile")
     sync_parser.add_argument("profile", help="Profile name or ID")
     sync_parser.add_argument("--dry-run", action="store_true", help="Perform dry-run simulation")
+    sync_parser.add_argument("--resync", action="store_true", help="Perform first-time or recovery --resync for bisync")
 
     # status subcommand
     subparsers.add_parser("status", help="Show profiles and daemon status")
@@ -181,7 +187,7 @@ def main() -> None:
     if args.command == "daemon":
         asyncio.run(run_daemon())
     elif args.command == "sync":
-        code = asyncio.run(cmd_sync(args.profile, dry_run=args.dry_run))
+        code = asyncio.run(cmd_sync(args.profile, dry_run=args.dry_run, resync=args.resync))
         sys.exit(code)
     elif args.command == "status":
         code = asyncio.run(cmd_status())

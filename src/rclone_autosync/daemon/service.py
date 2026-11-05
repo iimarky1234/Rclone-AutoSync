@@ -49,7 +49,7 @@ class DaemonService:
         self.watcher_manager: Optional[WatcherManager] = None
         self.scheduler: Optional[IntervalScheduler] = None
 
-        self._sync_queue: asyncio.Queue[tuple[str, bool, str]] = asyncio.Queue()  # (profile_id, dry_run, source)
+        self._sync_queue: asyncio.Queue[tuple[str, bool, bool, str]] = asyncio.Queue()  # (profile_id, dry_run, resync, source)
         self._queued_profile_ids: Set[str] = set()
         self._current_executor: Optional[RcloneExecutor] = None
         self._current_progress: Optional[TransferProgress] = None
@@ -118,7 +118,13 @@ class DaemonService:
         )
         root_logger.addHandler(console_handler)
 
-    def trigger_sync(self, profile_id: str, source: str = "manual", dry_run: bool = False) -> bool:
+    def trigger_sync(
+        self,
+        profile_id: str,
+        source: str = "manual",
+        dry_run: bool = False,
+        resync: bool = False,
+    ) -> bool:
         """Enqueue a sync run for a profile."""
         profile = next((p for p in self.profiles if p.id == profile_id), None)
         if not profile or not profile.enabled:
@@ -130,7 +136,7 @@ class DaemonService:
 
         self._queued_profile_ids.add(profile_id)
         self.profile_statuses[profile_id] = ProfileStatus.QUEUED
-        self._sync_queue.put_nowait((profile_id, dry_run, source))
+        self._sync_queue.put_nowait((profile_id, dry_run, resync, source))
 
         if self.ipc_server:
             asyncio.create_task(
@@ -145,7 +151,7 @@ class DaemonService:
         """Worker loop executing queued sync jobs sequentially."""
         while self._running:
             try:
-                profile_id, dry_run, source = await self._sync_queue.get()
+                profile_id, dry_run, resync, source = await self._sync_queue.get()
                 self._queued_profile_ids.discard(profile_id)
 
                 profile = next((p for p in self.profiles if p.id == profile_id), None)
@@ -163,11 +169,12 @@ class DaemonService:
                     )
 
                 logger.info(
-                    "Starting sync for '%s' (mode: %s, source: %s, dry_run: %s)",
+                    "Starting sync for '%s' (mode: %s, source: %s, dry_run: %s, resync: %s)",
                     profile.name,
                     profile.mode.value,
                     source,
                     dry_run,
+                    resync,
                 )
 
                 executor = RcloneExecutor(profile=profile, config=self.config)
@@ -189,6 +196,7 @@ class DaemonService:
                 try:
                     result = await executor.run(
                         dry_run=dry_run,
+                        resync=resync,
                         on_progress=on_progress,
                         on_log=on_log,
                     )
@@ -272,9 +280,10 @@ class DaemonService:
         elif action == "sync_now":
             profile_id = msg.get("profile_id")
             dry_run = bool(msg.get("dry_run", False))
+            resync = bool(msg.get("resync", False))
             if not profile_id:
                 raise ValueError("profile_id is required")
-            ok = self.trigger_sync(profile_id, source="user", dry_run=dry_run)
+            ok = self.trigger_sync(profile_id, source="user", dry_run=dry_run, resync=resync)
             return {"queued": ok}
 
         elif action == "reload_profiles":

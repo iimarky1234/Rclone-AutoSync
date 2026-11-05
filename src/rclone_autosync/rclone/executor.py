@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
+from pathlib import Path
 from typing import AsyncGenerator, Callable, List, Optional
 
 from ..config import load_global_config
@@ -20,11 +22,36 @@ from ..models import (
 
 logger = logging.getLogger(__name__)
 
+ANSI_ESCAPE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+
+
+def clean_ansi(text: str) -> str:
+    """Strip ANSI escape sequences from strings."""
+    if not text:
+        return ""
+    return ANSI_ESCAPE.sub("", text).strip()
+
+
+def has_bisync_listings(profile: SyncProfile) -> bool:
+    """Check if prior bisync listing files exist in rclone cache."""
+    cache_dir = Path.home() / ".cache" / "rclone" / "bisync"
+    if not cache_dir.exists():
+        return False
+
+    clean_local = str(profile.resolved_local_path).strip("/").replace("/", "_")
+    clean_remote = profile.remote.rstrip(":")
+
+    for f in cache_dir.glob("*.lst"):
+        if clean_local in f.name and clean_remote in f.name:
+            return True
+    return False
+
 
 def build_rclone_cmd(
     profile: SyncProfile,
     config: Optional[GlobalConfig] = None,
     dry_run: bool = False,
+    resync: bool = False,
     extra_flags: Optional[List[str]] = None,
 ) -> List[str]:
     """Construct the rclone command line for a sync profile."""
@@ -67,7 +94,10 @@ def build_rclone_cmd(
 
     # Bisync special flags
     if profile.mode == SyncMode.BISYNC:
-        cmd.append("--verbose")
+        cmd.extend(["--verbose", "--resilient", "--recover"])
+        # If explicitly requested or if no prior listings exist, use --resync
+        if resync or not has_bisync_listings(profile):
+            cmd.append("--resync")
 
     # Profile custom extra flags
     if profile.extra_flags:
@@ -92,12 +122,19 @@ class RcloneExecutor:
     async def run(
         self,
         dry_run: bool = False,
+        resync: bool = False,
         on_progress: Optional[Callable[[TransferProgress], None]] = None,
         on_log: Optional[Callable[[str, str], None]] = None,
         extra_flags: Optional[List[str]] = None,
     ) -> SyncRunResult:
         """Run the sync operation for the profile."""
-        cmd = build_rclone_cmd(self.profile, self.config, dry_run=dry_run, extra_flags=extra_flags)
+        cmd = build_rclone_cmd(
+            self.profile,
+            self.config,
+            dry_run=dry_run,
+            resync=resync,
+            extra_flags=extra_flags,
+        )
         logger.info("Executing rclone: %s", " ".join(cmd))
 
         start_time = time.time()
@@ -233,7 +270,7 @@ class RcloneExecutor:
         error_message = None
         if not success:
             error_lines = [l for l in action_log if "error" in l.lower() or "fatal" in l.lower()]
-            error_message = error_lines[-1] if error_lines else f"Exited with code {return_code}"
+            error_message = clean_ansi(error_lines[-1]) if error_lines else f"Exited with code {return_code}"
 
         return SyncRunResult(
             profile_id=self.profile.id,
