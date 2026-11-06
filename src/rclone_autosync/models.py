@@ -34,6 +34,10 @@ DEFAULT_EXCLUDES = [
     "*~",
     ".pytest_cache/**",
     ".venv/**",
+    "**/.cache/**",
+    "**/.Trash*/**",
+    "**/$RECYCLE.BIN/**",
+    "**/System Volume Information/**",
 ]
 
 

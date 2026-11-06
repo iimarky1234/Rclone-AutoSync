@@ -44,16 +44,22 @@ class DebouncedEventHandler(FileSystemEventHandler):
         profile: SyncProfile,
         loop: asyncio.AbstractEventLoop,
         trigger_callback: Callable[[str, str], None],
+        is_syncing_callback: Optional[Callable[[str], bool]] = None,
     ):
         super().__init__()
         self.profile = profile
         self.loop = loop
         self.trigger_callback = trigger_callback
+        self.is_syncing_callback = is_syncing_callback
         self.root_path = profile.resolved_local_path
         self._timer_handle: Optional[asyncio.TimerHandle] = None
 
     def on_any_event(self, event: FileSystemEvent) -> None:
         if event.is_directory:
+            return
+
+        # Suppress inotify feedback loop when this profile is actively syncing
+        if self.is_syncing_callback and self.is_syncing_callback(self.profile.id):
             return
 
         # Calculate relative path
@@ -103,9 +109,11 @@ class WatcherManager:
         self,
         loop: asyncio.AbstractEventLoop,
         trigger_callback: Callable[[str, str], None],
+        is_syncing_callback: Optional[Callable[[str], bool]] = None,
     ):
         self.loop = loop
         self.trigger_callback = trigger_callback
+        self.is_syncing_callback = is_syncing_callback
         self._observer: Optional[Observer] = None
         self._watches: Dict[str, Any] = {}  # profile_id -> watchdog watch handle
 
@@ -162,6 +170,7 @@ class WatcherManager:
                         profile=profile,
                         loop=self.loop,
                         trigger_callback=self.trigger_callback,
+                        is_syncing_callback=self.is_syncing_callback,
                     )
                     watch = self._observer.schedule(
                         handler,

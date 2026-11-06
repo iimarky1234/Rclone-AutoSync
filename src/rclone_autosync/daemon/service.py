@@ -77,6 +77,7 @@ class DaemonService:
         self.watcher_manager = WatcherManager(
             loop=loop,
             trigger_callback=self.trigger_sync,
+            is_syncing_callback=lambda p_id: self._current_profile_id == p_id,
         )
         self.watcher_manager.update_profiles(self.profiles)
 
