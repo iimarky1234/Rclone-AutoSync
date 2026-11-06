@@ -27,8 +27,60 @@ Built with Python, [Rich](https://github.com/Textualize/rich), [Questionary](htt
 
 ### 1. Requirements
 - Python 3.10+
-- `rclone` configured with your Google Drive remote (e.g. `Trietn31:`)
+- `rclone` configured with a remote (e.g. `Trietn31:` or `gdrive:`)
 - Linux (`systemd --user` supported)
+
+---
+
+## ☁️ Tutorial: How to Add Your Own Rclone Remote
+
+Before `rasync` can synchronize your files, you need at least one remote configured in `rclone`. Below is a step-by-step walkthrough for setting up Google Drive (or any cloud provider):
+
+### Step 1: Launch the Rclone Config Wizard
+Run in your terminal:
+```bash
+rclone config
+```
+
+### Step 2: Create a New Remote
+1. Type `n` and press `Enter` for **New remote**.
+2. Enter a descriptive name for your remote (e.g., `gdrive`, `drive`, or `Trietn31`).
+   > [!TIP]
+   > Keep the name short and simple without spaces. `rasync` will auto-discover this name.
+
+### Step 3: Select Storage Type
+A list of 50+ supported cloud backends will be displayed:
+- Type `drive` (or enter its corresponding number) for **Google Drive**.
+- *(Other popular options: `onedrive` for Microsoft OneDrive, `dropbox` for Dropbox, `pcloud` for pCloud, `sftp` for SSH/SFTP).*
+
+### Step 4: Configure Credentials & Permissions
+1. **Client ID & Client Secret**: Press `Enter` twice to leave blank (uses rclone's built-in application keys).
+2. **Access Scope**: Type `1` and press `Enter` for full access to read, create, and delete files on your Drive (`drive`).
+3. **Root Folder ID & Service Account**: Press `Enter` to leave blank for standard user drives.
+
+### Step 5: Complete Authentication
+1. **Auto Config**: When prompted `Use auto config? (y/n)`, press `y` (default).
+2. A web browser window will open automatically. Sign in with your Google account and click **Allow** to authorize rclone.
+   > *(If you are on a remote headless server via SSH, choose `n` and follow the on-screen instructions to run `rclone authorize "drive"` locally).*
+
+### Step 6: Save and Finish
+1. When asked `Configure this as a Shared Drive (Team Drive)?`, choose `n` (unless using a Workspace Shared Drive).
+2. Confirm the remote configuration by typing `y`.
+3. Type `q` to quit the `rclone config` menu.
+
+### Step 7: Verify Your Remote
+Test that rclone can reach your cloud drive:
+```bash
+# List directories in the root of your remote:
+rclone lsd gdrive:
+
+# Run rasync doctor to confirm rasync detects your remote:
+rasync doctor
+```
+
+Once detected, launch `rasync add` to configure automated syncing!
+
+---
 
 ### 2. Running with `uv`
 ```bash
