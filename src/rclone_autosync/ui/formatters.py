@@ -1,11 +1,21 @@
-"""Formatters for sizes, speeds, and timestamps in TUI."""
+"""Formatters for sizes, speeds, and timestamps in CLI."""
 
 from __future__ import annotations
 
 import datetime
+import re
+
+ANSI_ESCAPE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
 
-def format_bytes(num_bytes: int | float) -> str:
+def clean_ansi(text: str) -> str:
+    """Strip ANSI escape codes from string."""
+    if not text:
+        return ""
+    return ANSI_ESCAPE.sub("", text).strip()
+
+
+def format_bytes(num_bytes: int | float | None) -> str:
     """Format bytes into human-readable string (e.g. 1.25 MB)."""
     if num_bytes is None:
         return "0 B"
@@ -17,8 +27,10 @@ def format_bytes(num_bytes: int | float) -> str:
     return f"{n:.1f} PB"
 
 
-def format_speed(bytes_per_sec: float) -> str:
+def format_speed(bytes_per_sec: float | None) -> str:
     """Format speed into human-readable string (e.g. 4.2 MB/s)."""
+    if bytes_per_sec is None or bytes_per_sec <= 0:
+        return "0 B/s"
     return f"{format_bytes(bytes_per_sec)}/s"
 
 
@@ -40,7 +52,6 @@ def format_iso_timestamp(iso_str: str | None) -> str:
         return "Never"
     try:
         dt = datetime.datetime.fromisoformat(iso_str)
-        # Convert to local time if timezone is present
         if dt.tzinfo:
             dt = dt.astimezone()
         return dt.strftime("%Y-%m-%d %H:%M:%S")
