@@ -131,3 +131,10 @@ sudo sysctl fs.inotify.max_queued_events=131072
 echo "fs.inotify.max_queued_events=131072" | sudo tee /etc/sysctl.d/99-rasync.conf
 sudo sysctl --system
 ```
+
+---
+
+## 🤖 Disclaimer
+
+> [!NOTE]
+> This project was **vibe coded by Antigravity** (Google DeepMind's advanced agentic coding assistant) in collaboration with the user. Please remember to test your profiles with `--dry-run` and review sync paths before performing large production transfers. Happy syncing! 🚀
