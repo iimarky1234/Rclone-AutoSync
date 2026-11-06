@@ -30,7 +30,7 @@ from ..models import (
 from ..rclone.executor import RcloneExecutor
 from .ipc import IPCServer
 from .notify import send_notification
-from .power import PowerMonitor, is_ac_connected
+from .power import PowerMonitor, get_power_status, is_ac_connected
 from .scheduler import IntervalScheduler
 from .watcher import WatcherManager
 
@@ -308,6 +308,7 @@ class DaemonService:
         action = msg.get("action")
 
         if action == "get_state":
+            is_ac, has_battery, power_desc = get_power_status()
             return {
                 "uptime_seconds": round(time.time() - self.start_time, 1),
                 "profiles": [p.model_dump() for p in self.profiles],
@@ -316,6 +317,10 @@ class DaemonService:
                 "current_progress": (
                     self._current_progress.model_dump() if self._current_progress else None
                 ),
+                "power_status": power_desc,
+                "is_ac_connected": is_ac,
+                "has_battery": has_battery,
+                "queued_count": self._sync_queue.qsize(),
             }
 
         elif action == "sync_now":

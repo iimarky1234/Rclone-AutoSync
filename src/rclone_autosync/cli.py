@@ -39,6 +39,7 @@ from .models import SyncMode, SyncProfile
 from .rclone.executor import RcloneExecutor, has_bisync_listings
 from .ui.doctor import run_doctor_diagnostics
 from .ui.formatters import format_bytes, format_iso_timestamp
+from .ui.monitor import run_live_monitor
 from .ui.progress import SyncProgressDisplay
 from .ui.watcher_view import run_foreground_watcher
 from .ui.wizard import interactive_add_profile, interactive_edit_profile
@@ -56,6 +57,7 @@ def print_banner() -> None:
         f"  [cyan]rasync add[/cyan]           Interactive wizard to create a sync profile\n"
         f"  [cyan]rasync list[/cyan]          Display all configured sync profiles\n"
         f"  [cyan]rasync sync <name>[/cyan]   Run sync with live multi-bar progress\n"
+        f"  [cyan]rasync monitor[/cyan]       Live terminal status bar & dashboard\n"
         f"  [cyan]rasync watch <name>[/cyan]  Run real-time file watcher in foreground\n"
         f"  [cyan]rasync doctor[/cyan]        Run system and inotify limit health checks\n"
         f"  [cyan]rasync service ...[/cyan]   Manage background systemd auto-sync daemon"
@@ -340,6 +342,14 @@ def main() -> None:
     sync_parser.add_argument("--dry-run", action="store_true", help="Simulate changes without modifying files")
     sync_parser.add_argument("--resync", action="store_true", help="Force baseline resync for bidirectional mode")
 
+    # monitor / top
+    mon_parser = subparsers.add_parser(
+        "monitor",
+        aliases=["mon", "top"],
+        help="Live terminal status bar and dashboard for background syncs",
+    )
+    mon_parser.add_argument("--once", action="store_true", help="Print single snapshot and exit")
+
     # watch
     watch_parser = subparsers.add_parser("watch", help="Run interactive real-time file watcher in foreground")
     watch_parser.add_argument("profile", help="Profile name or ID to watch")
@@ -398,6 +408,9 @@ def main() -> None:
         sys.exit(code)
     elif args.command == "watch":
         code = asyncio.run(cmd_watch(args.profile))
+        sys.exit(code)
+    elif args.command in ("monitor", "mon", "top"):
+        code = asyncio.run(run_live_monitor(once=args.once))
         sys.exit(code)
     elif args.command == "edit":
         code = asyncio.run(cmd_edit(args.profile))

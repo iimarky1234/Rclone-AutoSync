@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class SyncMode(str, Enum):
@@ -96,6 +96,12 @@ class ActiveFileTransfer(BaseModel):
     speed: float = 0.0
     eta: Optional[int] = None
 
+    @model_validator(mode="after")
+    def compute_percentage(self) -> ActiveFileTransfer:
+        if self.size > 0 and self.percentage == 0 and self.bytes > 0:
+            self.percentage = int(min(100, (self.bytes / self.size) * 100))
+        return self
+
 
 class TransferProgress(BaseModel):
     profile_id: str
@@ -116,6 +122,12 @@ class TransferProgress(BaseModel):
     errors: int = 0
     active_files: List[ActiveFileTransfer] = Field(default_factory=list)
     current_message: str = ""
+
+    @model_validator(mode="after")
+    def compute_percentage(self) -> TransferProgress:
+        if self.total_bytes > 0 and self.percentage == 0.0:
+            self.percentage = round(min(100.0, (self.bytes_transferred / self.total_bytes) * 100.0), 1)
+        return self
 
 
 class SyncRunResult(BaseModel):

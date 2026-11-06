@@ -79,6 +79,7 @@ Then simply run `rasync` anywhere!
 | `rasync sync --all` | Sequentially synchronize all enabled profiles |
 | `rasync sync <name> --dry-run` | Preview files to be transferred or trashed without making changes |
 | `rasync sync <name> --resync` | Perform first-time baseline synchronization for `bisync` profiles |
+| `rasync monitor` (or `mon`, `top`) | Live continuous terminal task bar & dashboard for background syncs (`--once` for snapshot) |
 | `rasync watch <name>` | Run real-time foreground file watcher with live change feed |
 
 ### System & Service Controls

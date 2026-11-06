@@ -15,6 +15,21 @@ from ..models import SyncProfile, SyncRunResult, TransferProgress
 from .formatters import format_bytes, format_duration, format_speed
 
 
+def render_task_bar(
+    percentage: float,
+    width: int = 24,
+    fill_char: str = "━",
+    empty_char: str = "━",
+    fill_style: str = "bold green",
+    empty_style: str = "dim white",
+) -> str:
+    """Render a colored text progress task bar."""
+    pct = max(0.0, min(100.0, percentage))
+    filled = int(width * (pct / 100.0))
+    empty = width - filled
+    return f"[{fill_style}]{fill_char * filled}[/{fill_style}][{empty_style}]{empty_char * empty}[/{empty_style}]"
+
+
 class SyncProgressDisplay:
     """Manages rich real-time visual progress during sync operations."""
 
@@ -80,10 +95,8 @@ class SyncProgressDisplay:
             eta_str = format_duration(prog.eta_seconds)
             files_str = f"{prog.transfers}/{prog.total_transfers} files"
 
-            # Progress bar simulation
-            bar_width = 32
-            filled = int(bar_width * (pct / 100.0))
-            bar_visual = f"[bold green]{'━' * filled}[/bold green][dim white]{'━' * (bar_width - filled)}[/dim white]"
+            # Overall progress task bar
+            bar_visual = render_task_bar(pct, width=28, fill_style="bold green")
 
             stats_table = Table.grid(padding=(0, 2))
             stats_table.add_row(
@@ -95,7 +108,7 @@ class SyncProgressDisplay:
             )
             elements.append(stats_table)
 
-            # Active file transfers table
+            # Active file transfers with individual task bars
             if prog.active_files:
                 file_table = Table(
                     show_header=True,
@@ -104,14 +117,15 @@ class SyncProgressDisplay:
                     padding=(0, 1),
                 )
                 file_table.add_column("Transferring File", style="cyan", no_wrap=True)
-                file_table.add_column("Progress", style="green", justify="right")
+                file_table.add_column("Task Progress Bar", justify="left")
                 file_table.add_column("Speed", style="yellow", justify="right")
                 file_table.add_column("Size", style="dim", justify="right")
 
-                for f in prog.active_files[:4]:  # Show up to 4 concurrent files
+                for f in prog.active_files[:5]:  # Show up to 5 concurrent files
+                    file_bar = render_task_bar(f.percentage, width=12, fill_style="bold cyan")
                     file_table.add_row(
-                        f.name[:45],
-                        f"{f.percentage}%",
+                        f.name[:38],
+                        Text.from_markup(f"{file_bar} [bold green]{f.percentage:>3}%[/bold green]"),
                         format_speed(f.speed),
                         format_bytes(f.size),
                     )
