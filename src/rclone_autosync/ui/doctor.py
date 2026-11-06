@@ -14,6 +14,7 @@ from rich.text import Text
 
 from ..config import get_config_dir, get_socket_path, load_profiles
 from ..daemon.ipc import DaemonClient
+from ..daemon.power import get_power_status
 from ..daemon.systemd import get_service_status_summary, is_service_active, is_service_installed
 from ..rclone.client import get_rclone_version, is_rclone_available, list_remotes
 from .wizard import count_subdirectories
@@ -116,6 +117,15 @@ async def run_doctor_diagnostics() -> int:
         results.append(("Desktop Notifier", "[bold green]PASS[/bold green]", "notify-send available", "OK"))
     else:
         results.append(("Desktop Notifier", "[dim]INFO[/dim]", "notify-send not found", "Install libnotify for toast alerts"))
+
+    # 7. Power / Charger status check
+    is_ac, has_battery, power_desc = get_power_status()
+    if not has_battery:
+        results.append(("Power / Battery", "[bold green]PASS[/bold green]", power_desc, "Always AC (Desktop)"))
+    elif is_ac:
+        results.append(("Power / Battery", "[bold green]PASS[/bold green]", power_desc, "AC Connected (Full sync allowed)"))
+    else:
+        results.append(("Power / Battery", "[bold yellow]WARN[/bold yellow]", power_desc, "Battery mode: sync_on_ac waiting, pause_on_battery active"))
 
     # Render results table
     table = Table(box=None, header_style="bold cyan", padding=(0, 2))

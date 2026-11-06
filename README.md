@@ -14,7 +14,8 @@ Built with Python, [Rich](https://github.com/Textualize/rich), [Questionary](htt
   - `sync`: 1-way mirror (Google Drive matches local directory; deleted files safely moved to Google Drive Trash).
   - `copy`: 1-way upload (uploads new & changed files, preserves extras on remote).
   - `bisync`: 2-way bidirectional sync with automatic `--resync` baseline handling and `--recover` / `--resilient` flags.
-- **🩺 Built-in System Doctor (`rasync doctor`)**: Automatically validates rclone installation, cloud remotes, and checks Linux `inotify` queue limits against your directory sizes with actionable fix recommendations.
+- **🩺 Built-in System Doctor (`rasync doctor`)**: Automatically validates rclone installation, cloud remotes, power/battery state, and checks Linux `inotify` queue limits against your directory sizes with actionable fix recommendations.
+- **🔌 Smart Charger & Battery Triggers**: Trigger synchronizations the moment your laptop charger is plugged in (`sync_on_ac`), and pause background syncs while running on battery power (`pause_on_battery`) to protect battery life and mobile hotspot data.
 - **👀 Foreground Event Watcher (`rasync watch`)**: Live terminal event stream showing real-time file changes, debounce countdowns, and sync triggers in your current terminal session.
 - **⚙️ Native Linux Service (`systemd --user`)**: Lightweight background service running continuous file watchers and scheduled syncs independently of terminal sessions.
 - **🛡️ Google Drive Trash Protection**: Deleted files are moved to Google Drive Trash (`--drive-use-trash`) instead of being permanently lost.
@@ -98,3 +99,34 @@ Then simply run `rasync` anywhere!
 - **Sync History**: `~/.config/rasync/history.json`
 - **Daemon Logs**: `~/.config/rasync/daemon.log`
 - **Systemd Unit**: `~/.config/systemd/user/rasync.service`
+
+---
+
+## ⚡ Charger & Power Management
+
+`rasync` includes native Linux battery and AC charger detection (via `/sys/class/power_supply`):
+
+- **Sync on Charger Plugged In (`sync_on_ac`)**:
+  When you connect your laptop to wall power / charger, `rasync` immediately triggers a sync for all profiles configured with this setting. Perfect for syncing heavy work right when returning to your desk.
+- **Pause on Battery (`pause_on_battery`)**:
+  Prevents automatic file watch and scheduled sync triggers from consuming CPU and bandwidth while working on battery power.
+
+Configure these interactively during `rasync add` / `rasync edit`, or directly set `"sync_on_ac": true` and `"pause_on_battery": true` in `~/.config/rasync/profiles.json`.
+
+---
+
+## 🛠️ Linux Kernel Inotify Tuning
+
+If you watch large directory trees (such as whole drives with >16,000 subdirectories), Linux's default inotify queue size (`16384`) may overflow under heavy I/O:
+
+```bash
+# Check current health and directory counts:
+rasync doctor
+
+# Temporarily increase inotify queue size:
+sudo sysctl fs.inotify.max_queued_events=131072
+
+# Make permanent in /etc/sysctl.d/99-rasync.conf:
+echo "fs.inotify.max_queued_events=131072" | sudo tee /etc/sysctl.d/99-rasync.conf
+sudo sysctl --system
+```

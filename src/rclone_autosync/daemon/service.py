@@ -30,6 +30,7 @@ from ..models import (
 from ..rclone.executor import RcloneExecutor
 from .ipc import IPCServer
 from .notify import send_notification
+from .power import PowerMonitor, is_ac_connected
 from .scheduler import IntervalScheduler
 from .watcher import WatcherManager
 
@@ -48,6 +49,7 @@ class DaemonService:
         self.ipc_server: Optional[IPCServer] = None
         self.watcher_manager: Optional[WatcherManager] = None
         self.scheduler: Optional[IntervalScheduler] = None
+        self.power_monitor: Optional[PowerMonitor] = None
 
         self._sync_queue: asyncio.Queue[tuple[str, bool, bool, str]] = asyncio.Queue()  # (profile_id, dry_run, resync, source)
         self._queued_profile_ids: Set[str] = set()
@@ -86,7 +88,11 @@ class DaemonService:
         self.scheduler.set_profiles(self.profiles)
         self.scheduler.start()
 
-        # 4. Start Queue Worker
+        # 4. Start Power & Charger Monitor
+        self.power_monitor = PowerMonitor(on_ac_plugged_callback=self._on_ac_plugged)
+        self.power_monitor.start()
+
+        # 5. Start Queue Worker
         self._worker_task = asyncio.create_task(self._process_queue())
 
         logger.info("Daemon service successfully started with %d profiles", len(self.profiles))
@@ -119,6 +125,22 @@ class DaemonService:
         )
         root_logger.addHandler(console_handler)
 
+    def _on_ac_plugged(self) -> None:
+        """Triggered when charger is connected."""
+        logger.info("Charger connected event detected. Checking profiles with sync_on_ac...")
+        ac_profiles = [p for p in self.profiles if p.enabled and p.sync_on_ac]
+        if ac_profiles:
+            asyncio.create_task(
+                send_notification(
+                    title="Charger Connected",
+                    message=f"Starting automated AC sync for {len(ac_profiles)} profile(s)...",
+                    urgency="low",
+                    icon="battery-charging",
+                )
+            )
+            for p in ac_profiles:
+                self.trigger_sync(p.id, source="charger")
+
     def trigger_sync(
         self,
         profile_id: str,
@@ -129,6 +151,11 @@ class DaemonService:
         """Enqueue a sync run for a profile."""
         profile = next((p for p in self.profiles if p.id == profile_id), None)
         if not profile or not profile.enabled:
+            return False
+
+        # Battery preservation: Skip automated runs if running on battery
+        if profile.pause_on_battery and not is_ac_connected() and source != "user":
+            logger.info("Profile '%s' is paused while on battery power. Skipping sync (source=%s).", profile.name, source)
             return False
 
         if profile_id in self._queued_profile_ids or self._current_profile_id == profile_id:
@@ -343,6 +370,9 @@ class DaemonService:
 
         if self.scheduler:
             self.scheduler.stop()
+
+        if self.power_monitor:
+            self.power_monitor.stop()
 
         if self.ipc_server:
             await self.ipc_server.stop()

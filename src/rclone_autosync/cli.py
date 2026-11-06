@@ -108,9 +108,13 @@ async def cmd_list() -> int:
             triggers.append(f"Watch ({p.debounce_seconds}s)")
         if p.schedule_interval_minutes:
             triggers.append(f"Every {p.schedule_interval_minutes}m")
+        if p.sync_on_ac:
+            triggers.append("Charger-Plug")
         if not triggers:
             triggers.append("Manual")
         trigger_str = ", ".join(triggers)
+        if p.pause_on_battery:
+            trigger_str += " [dim](AC-only)[/dim]"
 
         # Status badge
         if p.last_sync_status == "success":
@@ -320,6 +324,7 @@ def main() -> None:
         prog="rasync",
         description="Rclone AutoSync (rasync) - Automated High-Performance Cloud Synchronizer",
     )
+    parser.add_argument("-v", "--version", action="version", version=f"rasync {VERSION}")
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
     # add / new

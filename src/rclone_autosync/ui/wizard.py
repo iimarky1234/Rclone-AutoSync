@@ -137,7 +137,18 @@ async def interactive_add_profile() -> Optional[SyncProfile]:
         except Exception:
             schedule_interval = 60
 
-    # 7. Bandwidth limit
+    # 7. Charger & Battery Options
+    sync_on_ac = await questionary.confirm(
+        "Automatically sync whenever AC charger is plugged in?",
+        default=True,
+    ).ask_async()
+
+    pause_on_battery = await questionary.confirm(
+        "Pause background auto-sync when running on battery power?",
+        default=False,
+    ).ask_async()
+
+    # 8. Bandwidth limit
     bwlimit_raw = await questionary.text(
         "Bandwidth Limit (optional, e.g. '10M', '5M', or empty for unlimited):",
         default="",
@@ -153,6 +164,8 @@ async def interactive_add_profile() -> Optional[SyncProfile]:
         watch_enabled=watch_enabled,
         debounce_seconds=debounce_seconds,
         schedule_interval_minutes=schedule_interval,
+        sync_on_ac=bool(sync_on_ac),
+        pause_on_battery=bool(pause_on_battery),
         bwlimit=bwlimit,
         excludes=list(DEFAULT_EXCLUDES),
     )
@@ -210,6 +223,16 @@ async def interactive_edit_profile(profile: SyncProfile) -> Optional[SyncProfile
     ).ask_async()
     schedule_interval = int(schedule_interval_raw) if schedule_interval_raw.strip().isdigit() else None
 
+    sync_on_ac = await questionary.confirm(
+        "Automatically sync whenever AC charger is plugged in?",
+        default=profile.sync_on_ac,
+    ).ask_async()
+
+    pause_on_battery = await questionary.confirm(
+        "Pause background auto-sync when running on battery power?",
+        default=profile.pause_on_battery,
+    ).ask_async()
+
     bwlimit_raw = await questionary.text(
         "Bandwidth Limit (e.g. '10M' or empty for unlimited):",
         default=profile.bwlimit or "",
@@ -222,6 +245,8 @@ async def interactive_edit_profile(profile: SyncProfile) -> Optional[SyncProfile
     updated.mode = mode
     updated.watch_enabled = bool(watch_enabled)
     updated.schedule_interval_minutes = schedule_interval
+    updated.sync_on_ac = bool(sync_on_ac)
+    updated.pause_on_battery = bool(pause_on_battery)
     updated.bwlimit = bwlimit_raw.strip() or None
 
     upsert_profile(updated)

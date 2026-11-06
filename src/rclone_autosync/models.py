@@ -51,6 +51,8 @@ class SyncProfile(BaseModel):
     watch_enabled: bool = True
     debounce_seconds: int = 10
     schedule_interval_minutes: Optional[int] = None
+    sync_on_ac: bool = False
+    pause_on_battery: bool = False
     bwlimit: Optional[str] = None
     use_trash: bool = True
     excludes: List[str] = Field(default_factory=lambda: list(DEFAULT_EXCLUDES))
