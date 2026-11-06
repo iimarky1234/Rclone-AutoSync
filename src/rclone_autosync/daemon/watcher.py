@@ -6,32 +6,80 @@ import asyncio
 import fnmatch
 import logging
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
+from ..config import get_config_dir
 from ..models import SyncProfile
 
 logger = logging.getLogger(__name__)
 
+# Patch watchdog's inotify engine on Linux to prune high-churn and excluded folders
+# This prevents kernel inotify queue overflow (IN_Q_OVERFLOW) and runaway CPU loops
+try:
+    import os
+    from watchdog.observers.inotify import InotifyWatchGroup
+
+    PRUNED_DIR_BYTES = {
+        b"zalodata",
+        b"rasync",
+        b".git",
+        b"node_modules",
+        b"__pycache__",
+        b".cache",
+        b"cache",
+        b".pytest_cache",
+        b".venv",
+        b"venv",
+        b"$recycle.bin",
+        b"system volume information",
+    }
+
+    def _patched_add_all_callbacks(self: Any, path: bytes) -> None:
+        is_dir = os.path.isdir(path)
+        self._add_callback(path)
+        if is_dir and self.is_recursive:
+            for root, dirnames, _ in os.walk(path, followlinks=self.follow_symlink):
+                dirnames[:] = [d for d in dirnames if d.lower() not in PRUNED_DIR_BYTES]
+                for dirname in dirnames:
+                    full_path = os.path.join(root, dirname)
+                    if not self.follow_symlink and os.path.islink(full_path):
+                        continue
+                    self._add_callback(full_path)
+
+    InotifyWatchGroup._add_all_callbacks = _patched_add_all_callbacks
+    logger.debug("Successfully installed inotify directory pruning patch")
+except Exception as e:
+    logger.debug("Inotify directory pruning patch skipped: %s", e)
+
 
 def should_ignore_path(rel_path: str, excludes: List[str]) -> bool:
     """Check if a relative path matches any exclusion patterns."""
-    normalized = rel_path.replace("\\", "/")
+    normalized = rel_path.replace("\\", "/").strip("/")
+    parts = normalized.split("/")
+
     for pattern in excludes:
         p = pattern.strip()
         if not p:
             continue
+
+        # Match exact folder name in any part of the path (e.g. "ZaloData", "rasync")
+        if p in parts:
+            return True
+        if normalized == p or normalized.startswith(p + "/"):
+            return True
+
         # Check standard fnmatch and directory prefix patterns
         if fnmatch.fnmatch(normalized, p) or fnmatch.fnmatch(f"/{normalized}", p):
             return True
         if p.endswith("/**"):
             prefix = p[:-3].rstrip("/")
-            if normalized == prefix or normalized.startswith(prefix + "/"):
+            if normalized == prefix or normalized.startswith(prefix + "/") or prefix in parts:
                 return True
         elif p.endswith("/*"):
             prefix = p[:-2].rstrip("/")
-            if normalized.startswith(prefix + "/"):
+            if normalized.startswith(prefix + "/") or prefix in parts:
                 return True
     return False
 
@@ -65,6 +113,11 @@ class DebouncedEventHandler(FileSystemEventHandler):
         # Calculate relative path
         try:
             event_path = Path(event.src_path).resolve()
+            # Always ignore rasync's own config/log files to prevent infinite feedback loops
+            config_dir = get_config_dir().resolve()
+            if event_path == config_dir or config_dir in event_path.parents:
+                return
+
             rel_path = str(event_path.relative_to(self.root_path))
         except Exception:
             rel_path = event.src_path

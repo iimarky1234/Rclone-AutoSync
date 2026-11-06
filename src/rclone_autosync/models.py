@@ -38,6 +38,8 @@ DEFAULT_EXCLUDES = [
     "**/.Trash*/**",
     "**/$RECYCLE.BIN/**",
     "**/System Volume Information/**",
+    "**/rasync/**",
+    "**/.config/rasync/**",
 ]
 
 

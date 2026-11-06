@@ -10,6 +10,7 @@ from rich.console import Console
 from rich.panel import Panel
 
 from ..config import upsert_profile
+from ..daemon.ipc import DaemonClient
 from ..models import DEFAULT_EXCLUDES, SyncMode, SyncProfile
 from ..rclone.client import list_remote_dirs, list_remotes
 
@@ -172,7 +173,32 @@ async def interactive_add_profile() -> Optional[SyncProfile]:
 
     upsert_profile(profile)
     console.print(f"\n[bold green]✔ Profile '{profile.name}' created successfully![/bold green]")
-    console.print(f"[dim]Run 'rasync sync \"{profile.name}\" --dry-run' to test it.[/dim]\n")
+
+    # 1. Notify background daemon to load the new profile immediately
+    client = DaemonClient()
+    daemon_online = await client.is_running()
+    if daemon_online:
+        try:
+            await client.send_command("reload_profiles")
+        except Exception:
+            pass
+
+    # 2. Offer to start the initial sync immediately
+    run_now = await questionary.confirm(
+        f"Start initial synchronization for '{profile.name}' right now?",
+        default=True,
+    ).ask_async()
+
+    if run_now:
+        from ..cli import cmd_sync_single
+        console.print(f"\n[bold cyan]Starting initial sync for '{profile.name}'...[/bold cyan]")
+        is_bisync = profile.mode == SyncMode.BISYNC
+        await cmd_sync_single(profile, dry_run=False, resync=is_bisync)
+    elif daemon_online:
+        console.print("[dim]Profile queued in background daemon for automated sync.[/dim]\n")
+    else:
+        console.print(f"[dim]Run 'rasync sync \"{profile.name}\"' when you are ready to sync.[/dim]\n")
+
     return profile
 
 
@@ -251,4 +277,13 @@ async def interactive_edit_profile(profile: SyncProfile) -> Optional[SyncProfile
 
     upsert_profile(updated)
     console.print(f"\n[bold green]✔ Profile '{updated.name}' updated successfully![/bold green]\n")
+
+    # Notify daemon to refresh its watches and schedules
+    client = DaemonClient()
+    if await client.is_running():
+        try:
+            await client.send_command("reload_profiles")
+        except Exception:
+            pass
+
     return updated

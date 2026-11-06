@@ -23,6 +23,7 @@ from ..config import (
 from ..models import (
     GlobalConfig,
     ProfileStatus,
+    SyncMode,
     SyncProfile,
     SyncRunResult,
     TransferProgress,
@@ -96,6 +97,18 @@ class DaemonService:
         self._worker_task = asyncio.create_task(self._process_queue())
 
         logger.info("Daemon service successfully started with %d profiles", len(self.profiles))
+
+        # 6. Auto-queue initial baseline sync for profiles that have never synced
+        self._check_and_queue_new_profiles()
+
+    def _check_and_queue_new_profiles(self) -> None:
+        """Automatically trigger initial baseline sync for newly added profiles that have never synced."""
+        for p in self.profiles:
+            if p.enabled and p.last_sync_time is None:
+                if p.id not in self._queued_profile_ids and self._current_profile_id != p.id:
+                    logger.info("Profile '%s' has never synced before. Enqueueing initial baseline sync...", p.name)
+                    is_bisync = (p.mode == SyncMode.BISYNC)
+                    self.trigger_sync(p.id, source="initial", resync=is_bisync)
 
     def _init_statuses(self) -> None:
         for p in self.profiles:
@@ -358,6 +371,8 @@ class DaemonService:
             self.watcher_manager.update_profiles(self.profiles)
         if self.scheduler:
             self.scheduler.set_profiles(self.profiles)
+
+        self._check_and_queue_new_profiles()
 
     async def stop(self) -> None:
         """Gracefully stop all services."""
